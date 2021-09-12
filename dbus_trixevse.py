@@ -14,6 +14,7 @@ try:
   import gobject
 except ImportError:
   from gi.repository import GLib as gobject
+import argparse
 import platform
 import logging
 import sys
@@ -31,15 +32,17 @@ from vedbus import VeDbusService
 
 log = logging.getLogger("DbusTrixEVSE")
 
-_URL = 'http://192.168.2.132'
-URL = _URL + '/j'
-CURRENT_URL = _URL + '/current'
-CHARGING_URL = _URL + '/charging'
+class DbusEVSEService:
 
-class DbusTWC3Service:
-
-  def __init__(self, servicename, deviceinstance, productname='Trixing EVSE', connection=_URL):
+  def __init__(self, servicename, deviceinstance, ip):
     self._dbusservice = VeDbusService(servicename)
+
+    url = 'http://' + ip
+    self.URL = url + '/j'
+    self.CURRENT_URL = url + '/current'
+    self.CHARGING_URL = url + '/charging'
+
+
     paths=[
       '/Ac/Power',
       '/Ac/L1/Power',
@@ -60,15 +63,15 @@ class DbusTWC3Service:
     # Create the management objects, as specified in the ccgx dbus-api document
     self._dbusservice.add_path('/Mgmt/ProcessName', __file__)
     self._dbusservice.add_path('/Mgmt/ProcessVersion', 'Unkown version, and running on Python ' + platform.python_version())
-    self._dbusservice.add_path('/Mgmt/Connection', connection)
+    self._dbusservice.add_path('/Mgmt/Connection', ip)
 
     # Create the mandatory objects
     self._dbusservice.add_path('/DeviceInstance', deviceinstance)
     self._dbusservice.add_path('/ProductId', 16) # value used in ac_sensor_bridge.cpp of dbus-cgwacs
-    self._dbusservice.add_path('/ProductName', productname)
+    self._dbusservice.add_path('/ProductName', 'Trixing EVSE')
     self._dbusservice.add_path('/FirmwareVersion', 0.1)
     self._dbusservice.add_path('/HardwareVersion', 0)
-    self._dbusservice.add_path('/Connected', 1)
+    self._dbusservice.add_path('/Connected', 0)
 
     self._dbusservice.add_path(
         '/SetCurrent', None, writeable=True, onchangecallback=self._setcurrent)
@@ -78,31 +81,35 @@ class DbusTWC3Service:
     for path in paths:
       self._dbusservice.add_path(path, None)
 
+    self._retries = 0
+
     gobject.timeout_add(5000, self._safe_update)
 
   def _setcurrent(self, path, value):
-      print(path, value)
-      p = requests.post(url = CURRENT_URL, data = {'value': value}, timeout=10)
-      print(p)
+      p = requests.post(url = self.CURRENT_URL, data = {'value': value}, timeout=10)
       return True
 
   def _startstop(self, path, value):
-      print(path, value)
       if value == 0: # stop in victron language
         value = 2 # stop in trix-evse language
-      p = requests.post(url = CHARGING_URL, data = {'value': value}, timeout=10)
-      print(p)
+      p = requests.post(url = self.CHARGING_URL, data = {'value': value}, timeout=10)
       return True
 
   def _safe_update(self):
     try:
         self._update()
+        if self._retries > 1:
+            self._dbusservice['/Connected'] = 1
+        self._retries = 0
     except Exception as e:
         log.error('Error running update %s' % e)
+        self._retries +=1 
+        if self._retries > 1:
+            self._dbusservice['/Connected'] = 0
     return True
 
   def _update(self):
-    r = requests.get(url = URL, timeout=10)
+    r = requests.get(url = self.URL, timeout=10)
     d = r.json() 
     m = d['meter']
     e = d['evse']
@@ -157,6 +164,16 @@ def main():
   root.addHandler(handler)
 
   log.info('Startup')
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--ip', help='IP Address of Station')
+  parser.add_argument('--service', help='Service Name, e.g. for test')
+  args = parser.parse_args()
+  if args.ip:
+      log.info('User supplied IP: %s' % args.ip)
+  else:
+      log.info('IP not supplied')
+      sys.exit(1)
+
 
   try:
     thread.daemon = True # allow the program to quit
@@ -167,9 +184,10 @@ def main():
   # Have a mainloop, so we can send/receive asynchronous calls to and from dbus
   DBusGMainLoop(set_as_default=True)
 
-  pvac_output = DbusTWC3Service(
-    servicename='com.victronenergy.evcharger.trixevse',
-    deviceinstance=43)
+  pvac_output = DbusEVSEService(
+    servicename=args.service or 'com.victronenergy.evcharger.trixevse',
+    deviceinstance=43,
+    ip=args.ip)
 
   logging.info('Connected to dbus, and switching over to gobject.MainLoop() (= event based)')
   mainloop = gobject.MainLoop()
