@@ -227,7 +227,7 @@ def main():
 
   log.info('Startup')
   parser = argparse.ArgumentParser()
-  parser.add_argument('--ip', default='trixevse.local', help='IP Address of Station')
+  parser.add_argument('--ip', default='trixing-evse.local', help='IP Address of Station')
   parser.add_argument('--service', default='com.victronenergy.evcharger.trixevse', help='Service Name, e.g. for test')
   parser.add_argument('--instance', default=43, help='Instance on DBUS, will be incremented by 100 in dryrun mode')
   parser.add_argument('--dryrun', dest='dryrun', action='store_true')
