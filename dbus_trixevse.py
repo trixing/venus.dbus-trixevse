@@ -205,6 +205,9 @@ class DbusEVSEService:
     elif state == 1:
         self._tempservice['/CustomName'] = self._name + ' Car Connected [A]'
         self._tempservice['/Temperature'] = e['set_current']
+    elif not e['charging_enabled']:
+        self._tempservice['/CustomName'] = self._name + ' Disabled'
+        self._tempservice['/Temperature'] = 0.0
     else:
         self._tempservice['/CustomName'] = self._name + ' Idle [A]'
         self._tempservice['/Temperature'] = e['set_current']
