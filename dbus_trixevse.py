@@ -89,6 +89,8 @@ class DbusEVSEService:
     self._dbusservice.add_path('/HardwareVersion', 0)
     self._dbusservice.add_path('/Connected', 0)
 
+    self._dbusservice.add_path('/CustomName', name)
+
     self._dbusservice.add_path(
         '/SetCurrent', None, writeable=True, onchangecallback=self._setcurrent)
     self._dbusservice.add_path(
